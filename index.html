@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>バカラ判定クイズ</title>
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="バカラクイズ">
+<meta name="theme-color" content="#0b3d2e">
+<link rel="apple-touch-icon" href="icon.png">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, "Hiragino Sans", "Yu Gothic", sans-serif;
+    background: #0b3d2e; color: #f4f4f0;
+    min-height: 100vh;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 1.5rem 1rem; }
+  h1 { font-size: 18px; font-weight: 500; text-align: center; margin: 0 0 1.5rem; letter-spacing: 0.05em; color: #f4f4f0; }
+  #deal {
+    display: block; width: 100%; padding: 14px;
+    font-size: 16px; font-weight: 600;
+    background: #d4af37; color: #1a1a1a;
+    border: none; border-radius: 10px;
+    margin-bottom: 1.5rem; cursor: pointer;
+  }
+  #deal:active { opacity: 0.8; }
+  .boards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 1rem; }
+  .board { background: #134d38; border: 1px solid #2a7a56; border-radius: 12px; padding: 1rem; }
+  .board p.label { font-size: 12px; color: #8ecfb0; margin: 0 0 8px; letter-spacing: 0.05em; }
+  .cards { display: flex; gap: 6px; min-height: 56px; flex-wrap: wrap; }
+  .card {
+    width: 38px; height: 54px;
+    border: 1px solid #ccc; border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 600;
+    background: #fdfbf5; color: #1a1a1a;
+  }
+  .card.hidden { background: #1e6648; color: #8ecfb0; border-color: #2a7a56; }
+  .card.red { color: #c0392b; }
+  .total { font-size: 26px; font-weight: 600; margin: 10px 0 0; color: #f4f4f0; }
+
+  /* 勝率ボックス */
+  .winrate-box {
+    display: none;
+    background: #134d38;
+    border: 1px solid #2a7a56;
+    border-radius: 12px;
+    padding: 0.8rem 1rem;
+    margin-bottom: 1rem;
+  }
+  .winrate-box.show { display: block; }
+  .wr-title { font-size: 11px; color: #8ecfb0; margin: 0 0 8px; letter-spacing: 0.05em; }
+  .wr-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; }
+  .wr-row { display: flex; align-items: center; gap: 6px; }
+  .wr-label { font-size: 11px; color: #f4f4f0; width: 72px; flex-shrink: 0; }
+  .wr-bar-bg { flex: 1; background: #0b3d2e; border-radius: 3px; height: 8px; overflow: hidden; }
+  .wr-bar { height: 100%; border-radius: 3px; transition: width 0.5s ease; width: 0%; }
+  .wr-bar.player { background: #5ddb8a; }
+  .wr-bar.banker { background: #d4af37; }
+  .wr-bar.tie    { background: #7ab8f5; }
+  .wr-pct { font-size: 11px; font-weight: 700; color: #f4f4f0; width: 34px; text-align: right; flex-shrink: 0; }
+  .wr-change { font-size: 10px; margin-left: 2px; }
+  .wr-change.up   { color: #5ddb8a; }
+  .wr-change.down { color: #ff7070; }
+
+  .q { margin-bottom: 1.2rem; display: none; }
+  .q.show { display: block; }
+  .q p.label { font-size: 14px; font-weight: 700; margin: 0 0 8px; color: #0b3d2e; background: #d4af37; display: inline-block; padding: 4px 10px; border-radius: 6px; }
+  .btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btnrow button {
+    flex: 1; min-width: 80px; padding: 12px 8px;
+    font-size: 14px; font-weight: 500;
+    background: #1e6648; color: #f4f4f0;
+    border: 1px solid #2a7a56; border-radius: 8px; cursor: pointer;
+  }
+  .btnrow button:active { background: #2a7a56; }
+  .hint { font-size: 11px; color: #8ecfb0; margin: 6px 0 0; }
+  #result { text-align: center; font-size: 15px; font-weight: 500; min-height: 24px; margin-top: 1rem; }
+  #result.correct { color: #5ddb8a; }
+  #result.wrong { color: #ff7070; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>バカラ判定クイズ</h1>
+  <button id="deal">新しい手を配る</button>
+
+  <div class="boards">
+    <div class="board">
+      <p class="label">バンカー</p>
+      <div class="cards" id="banker-cards"></div>
+      <p class="total" id="banker-total">-</p>
+    </div>
+    <div class="board">
+      <p class="label">プレイヤー</p>
+      <div class="cards" id="player-cards"></div>
+      <p class="total" id="player-total">-</p>
+    </div>
+  </div>
+
+  <!-- 勝率（2枚時点） -->
+  <div class="winrate-box" id="wr1">
+    <p class="wr-title">勝率（各2枚時点）</p>
+    <div class="wr-cols">
+      <div class="wr-row">
+        <span class="wr-label">プレイヤー</span>
+        <div class="wr-bar-bg"><div class="wr-bar player" id="wr1-bar-p"></div></div>
+        <span class="wr-pct" id="wr1-pct-p">-</span>
+      </div>
+      <div class="wr-row">
+        <span class="wr-label">バンカー</span>
+        <div class="wr-bar-bg"><div class="wr-bar banker" id="wr1-bar-b"></div></div>
+        <span class="wr-pct" id="wr1-pct-b">-</span>
+      </div>
+      <div class="wr-row">
+        <span class="wr-label">タイ</span>
+        <div class="wr-bar-bg"><div class="wr-bar tie" id="wr1-bar-t"></div></div>
+        <span class="wr-pct" id="wr1-pct-t">-</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="q show" id="q1-area">
+    <p class="label">Q1. プレイヤーは3枚目を引く？</p>
+    <div class="btnrow">
+      <button class="q1-btn" data-v="yes">引く</button>
+      <button class="q1-btn" data-v="no">引かない</button>
+    </div>
+  </div>
+
+  <!-- 勝率（プレイヤー3枚目後） -->
+  <div class="winrate-box" id="wr2">
+    <p class="wr-title">勝率（プレイヤー3枚目後）</p>
+    <div class="wr-cols">
+      <div class="wr-row">
+        <span class="wr-label">プレイヤー</span>
+        <div class="wr-bar-bg"><div class="wr-bar player" id="wr2-bar-p"></div></div>
+        <span class="wr-pct" id="wr2-pct-p">-</span>
+        <span class="wr-change" id="wr2-chg-p"></span>
+      </div>
+      <div class="wr-row">
+        <span class="wr-label">バンカー</span>
+        <div class="wr-bar-bg"><div class="wr-bar banker" id="wr2-bar-b"></div></div>
+        <span class="wr-pct" id="wr2-pct-b">-</span>
+        <span class="wr-change" id="wr2-chg-b"></span>
+      </div>
+      <div class="wr-row">
+        <span class="wr-label">タイ</span>
+        <div class="wr-bar-bg"><div class="wr-bar tie" id="wr2-bar-t"></div></div>
+        <span class="wr-pct" id="wr2-pct-t">-</span>
+        <span class="wr-change" id="wr2-chg-t"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="q" id="q2-area">
+    <p class="label">Q2. バンカーは3枚目を引く？</p>
+    <div class="btnrow">
+      <button class="q2-btn" data-v="yes">引く</button>
+      <button class="q2-btn" data-v="no">引かない</button>
+    </div>
+  </div>
+
+  <div class="q" id="q3-area">
+    <p class="label">Q3. 勝敗は？</p>
+    <div class="btnrow">
+      <button class="q3-btn" data-v="player">プレイヤー</button>
+      <button class="q3-btn" data-v="banker">バンカー</button>
+      <button class="q3-btn" data-v="dragon7">ドラゴン7</button>
+      <button class="q3-btn" data-v="tie">タイ</button>
+    </div>
+    <p class="hint">ドラゴン7 = バンカーが3枚で7を作って勝利</p>
+  </div>
+
+  <div id="result"></div>
+</div>
+
+<script>
+const suits = ['♠','♥','♦','♣'];
+
+function cardValue(rank){
+  if(rank==='A') return 1;
+  if(['10','J','Q','K'].includes(rank)) return 0;
+  return parseInt(rank);
+}
+function drawCard(deck){
+  const i = Math.floor(Math.random()*deck.length);
+  return deck.splice(i,1)[0];
+}
+function renderCard(card, hidden){
+  const div = document.createElement('div');
+  div.className = 'card' + (hidden ? ' hidden' : (['♥','♦'].includes(card.suit) ? ' red' : ''));
+  div.textContent = hidden ? '?' : (card.rank + card.suit);
+  return div;
+}
+function computeTotal(cards){
+  return cards.reduce((s,c)=>s+cardValue(c.rank),0)%10;
+}
+
+function resolveOutcome(pTotal0, bTotal0, pThird, bThird){
+  let pTotal = pThird !== null ? (pTotal0 + pThird) % 10 : pTotal0;
+  let bTotal = bThird !== null ? (bTotal0 + bThird) % 10 : bTotal0;
+  if(bThird !== null && bTotal === 7 && bTotal > pTotal) return 'dragon7';
+  if(pTotal > bTotal) return 'player';
+  if(bTotal > pTotal) return 'banker';
+  return 'tie';
+}
+
+function deckToValueCounts(deck){
+  const cnt = new Array(10).fill(0);
+  deck.forEach(c => cnt[cardValue(c.rank)]++);
+  return cnt;
+}
+
+// バンカーが引くかどうかを判定
+function bankerDraws(bTotal0, playerThird){
+  if(playerThird === null) return bTotal0 <= 5;
+  if(bTotal0 <= 2) return true;
+  if(bTotal0 === 3) return playerThird !== 8;
+  if(bTotal0 === 4) return [2,3,4,5,6,7].includes(playerThird);
+  if(bTotal0 === 5) return [4,5,6,7].includes(playerThird);
+  if(bTotal0 === 6) return [6,7].includes(playerThird);
+  return false;
+}
+
+// 勝率計算: pKnown=プレイヤー3枚目の価値(null=未確定/引かない), phase='2card'|'after_p3'
+function calcWinRate(pTotal0, bTotal0, pDraws, vc, pKnown){
+  const counts = {player:0, banker:0, tie:0, dragon7:0};
+  let total = 0;
+
+  if(!pDraws){
+    // プレイヤーは引かない
+    const bDraw = bankerDraws(bTotal0, null);
+    if(!bDraw){
+      const o = resolveOutcome(pTotal0, bTotal0, null, null);
+      counts[o]++; total++;
+    } else {
+      for(let v=0;v<10;v++) if(vc[v]>0){
+        const o = resolveOutcome(pTotal0, bTotal0, null, v);
+        counts[o] += vc[v]; total += vc[v];
+      }
+    }
+  } else if(pKnown !== null){
+    // プレイヤー3枚目確定
+    const bDraw = bankerDraws(bTotal0, pKnown);
+    if(!bDraw){
+      const o = resolveOutcome(pTotal0, bTotal0, pKnown, null);
+      counts[o]++; total++;
+    } else {
+      for(let v=0;v<10;v++) if(vc[v]>0){
+        const o = resolveOutcome(pTotal0, bTotal0, pKnown, v);
+        counts[o] += vc[v]; total += vc[v];
+      }
+    }
+  } else {
+    // プレイヤー3枚目未確定 → 全パターン列挙
+    for(let pv=0;pv<10;pv++) if(vc[pv]>0){
+      const bDraw = bankerDraws(bTotal0, pv);
+      if(!bDraw){
+        const o = resolveOutcome(pTotal0, bTotal0, pv, null);
+        counts[o] += vc[pv]; total += vc[pv];
+      } else {
+        // バンカーも引く: 残りデッキからバンカーのカードを列挙
+        const vc2 = [...vc]; vc2[pv]--;
+        for(let bv=0;bv<10;bv++){
+          const bCnt = vc2[bv];
+          if(bCnt <= 0) continue;
+          const w = vc[pv] * bCnt;
+          const o = resolveOutcome(pTotal0, bTotal0, pv, bv);
+          counts[o] += w; total += w;
+        }
+      }
+    }
+  }
+
+  if(total === 0) return {player:0, banker:0, tie:0, dragon7:0};
+  return {
+    player: counts.player / total * 100,
+    banker: counts.banker / total * 100,
+    tie: counts.tie / total * 100,
+    dragon7: counts.dragon7 / total * 100,
+  };
+}
+
+function setWrBox(prefix, wr, prev){
+  const bankerTotal = wr.banker + wr.dragon7;
+  const vals = {p: wr.player, b: bankerTotal, t: wr.tie};
+  for(const k of ['p','b','t']){
+    document.getElementById(`${prefix}-bar-${k}`).style.width = vals[k].toFixed(1)+'%';
+    document.getElementById(`${prefix}-pct-${k}`).textContent = vals[k].toFixed(1)+'%';
+    const chgEl = document.getElementById(`${prefix}-chg-${k}`);
+    if(chgEl && prev){
+      const prevVal = k==='b' ? prev.banker+prev.dragon7 : prev[k==='p'?'player':'tie'];
+      const diff = vals[k] - prevVal;
+      if(Math.abs(diff) >= 0.05){
+        chgEl.textContent = (diff>0?'▲':'▼') + Math.abs(diff).toFixed(1)+'%';
+        chgEl.className = 'wr-change ' + (diff>0?'up':'down');
+      } else {
+        chgEl.textContent = '';
+      }
+    }
+  }
+  document.getElementById(prefix.replace('-','') + '').classList.add('show');
+  // show the box
+  const boxId = prefix === 'wr1' ? 'wr1' : 'wr2';
+  document.getElementById(boxId).classList.add('show');
+}
+
+let state = {};
+
+function newHand(){
+  const ranks = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+  let deck = [];
+  for(let d=0;d<6;d++) for(const s of suits) for(const r of ranks) deck.push({suit:s, rank:r});
+
+  const pCards=[drawCard(deck), drawCard(deck)];
+  const bCards=[drawCard(deck), drawCard(deck)];
+  const pTotal0 = computeTotal(pCards);
+  const bTotal0 = computeTotal(bCards);
+
+  let pTotal = pTotal0, bTotal = bTotal0;
+  let playerThird = null, pCardObj=null, bCardObj=null;
+  let pDraws=false, bDraws=false;
+
+  if(pTotal0>=8 || bTotal0>=8){
+    pDraws=false; bDraws=false;
+  } else {
+    pDraws = pTotal0<=5;
+    if(pDraws){
+      pCardObj = drawCard(deck);
+      playerThird = cardValue(pCardObj.rank);
+      pTotal = (pTotal0+playerThird)%10;
+    }
+    bDraws = bankerDraws(bTotal0, playerThird);
+  }
+  if(bDraws){
+    bCardObj = drawCard(deck);
+    bTotal = (bTotal0 + cardValue(bCardObj.rank))%10;
+  }
+
+  let outcome;
+  if(bDraws && bTotal===7 && bTotal>pTotal) outcome='dragon7';
+  else if(pTotal>bTotal) outcome='player';
+  else if(bTotal>pTotal) outcome='banker';
+  else outcome='tie';
+
+  state = {pCards, bCards, pCardObj, bCardObj, playerDraws:pDraws, bankerDraws:bDraws, outcome, remainingDeck: deck, pTotal0, bTotal0};
+
+  const pDiv = document.getElementById('player-cards');
+  const bDiv = document.getElementById('banker-cards');
+  pDiv.innerHTML=''; bDiv.innerHTML='';
+  pCards.forEach(c=>pDiv.appendChild(renderCard(c)));
+  bCards.forEach(c=>bDiv.appendChild(renderCard(c)));
+  if(pCardObj) pDiv.appendChild(renderCard(pCardObj, true));
+  if(bCardObj) bDiv.appendChild(renderCard(bCardObj, true));
+
+  document.getElementById('player-total').textContent = pTotal0;
+  document.getElementById('banker-total').textContent = bTotal0;
+  const res = document.getElementById('result');
+  res.textContent=''; res.className='';
+  document.getElementById('wr1').classList.remove('show');
+  document.getElementById('wr2').classList.remove('show');
+  document.getElementById('q1-area').classList.add('show');
+  document.getElementById('q2-area').classList.remove('show');
+  document.getElementById('q3-area').classList.remove('show');
+
+  // 2枚時点の勝率を即計算・表示
+  const vc = deckToValueCounts(deck);
+  const wr1 = calcWinRate(pTotal0, bTotal0, pDraws, vc, null);
+  state.wr1 = wr1;
+  // バーをセット（wr1はchg不要）
+  const b1 = wr1.banker + wr1.dragon7;
+  document.getElementById('wr1-bar-p').style.width = wr1.player.toFixed(1)+'%';
+  document.getElementById('wr1-bar-b').style.width = b1.toFixed(1)+'%';
+  document.getElementById('wr1-bar-t').style.width = wr1.tie.toFixed(1)+'%';
+  document.getElementById('wr1-pct-p').textContent = wr1.player.toFixed(1)+'%';
+  document.getElementById('wr1-pct-b').textContent = b1.toFixed(1)+'%';
+  document.getElementById('wr1-pct-t').textContent = wr1.tie.toFixed(1)+'%';
+  document.getElementById('wr1').classList.add('show');
+}
+
+document.getElementById('deal').addEventListener('click', newHand);
+newHand();
+
+document.querySelectorAll('.q1-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const guess = btn.dataset.v==='yes';
+    const correct = state.playerDraws===guess;
+    const res = document.getElementById('result');
+    res.className = correct ? 'correct' : 'wrong';
+    res.textContent = (correct?'正解！ ':'不正解。 ') + 'プレイヤーは' + (state.playerDraws?'3枚目を引きました':'引きませんでした');
+
+    if(state.playerDraws && state.pCardObj){
+      const pDiv = document.getElementById('player-cards');
+      pDiv.lastChild.remove();
+      pDiv.appendChild(renderCard(state.pCardObj, false));
+      document.getElementById('player-total').textContent = computeTotal(state.pCards.concat([state.pCardObj]));
+    }
+
+    // プレイヤー3枚目後の勝率
+    const pKnown = state.playerDraws && state.pCardObj ? cardValue(state.pCardObj.rank) : null;
+    const vc = deckToValueCounts(state.remainingDeck);
+    const wr2 = calcWinRate(state.pTotal0, state.bTotal0, state.playerDraws, vc, pKnown);
+    state.wr2 = wr2;
+
+    setTimeout(()=>{
+      // wr2表示（差分つき）
+      const prev = state.wr1;
+      const b2 = wr2.banker + wr2.dragon7;
+      const bPrev = prev.banker + prev.dragon7;
+      for(const [k, cur, p] of [['p', wr2.player, prev.player],['b', b2, bPrev],['t', wr2.tie, prev.tie]]){
+        document.getElementById(`wr2-bar-${k}`).style.width = cur.toFixed(1)+'%';
+        document.getElementById(`wr2-pct-${k}`).textContent = cur.toFixed(1)+'%';
+        const diff = cur - p;
+        const chgEl = document.getElementById(`wr2-chg-${k}`);
+        if(Math.abs(diff) >= 0.05){
+          chgEl.textContent = (diff>0?'▲':'▼') + Math.abs(diff).toFixed(1)+'%';
+          chgEl.className = 'wr-change ' + (diff>0?'up':'down');
+        } else { chgEl.textContent=''; }
+      }
+      document.getElementById('wr2').classList.add('show');
+      document.getElementById('q2-area').classList.add('show');
+      res.textContent=''; res.className='';
+    }, 1200);
+  });
+});
+
+document.querySelectorAll('.q2-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const guess = btn.dataset.v==='yes';
+    const correct = state.bankerDraws===guess;
+    const res = document.getElementById('result');
+    res.className = correct ? 'correct' : 'wrong';
+    res.textContent = (correct?'正解！ ':'不正解。 ') + 'バンカーは' + (state.bankerDraws?'3枚目を引きました':'引きませんでした');
+    if(state.bankerDraws && state.bCardObj){
+      const bDiv = document.getElementById('banker-cards');
+      bDiv.lastChild.remove();
+      bDiv.appendChild(renderCard(state.bCardObj, false));
+      document.getElementById('banker-total').textContent = computeTotal(state.bCards.concat([state.bCardObj]));
+    }
+    setTimeout(()=>{
+      document.getElementById('q3-area').classList.add('show');
+      res.textContent=''; res.className='';
+    }, 1200);
+  });
+});
+
+document.querySelectorAll('.q3-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const guess = btn.dataset.v;
+    const correct = state.outcome===guess;
+    const labels={player:'プレイヤーの勝ち',banker:'バンカーの勝ち',tie:'タイ',dragon7:'ドラゴン7（バンカー3枚で7）'};
+    const res = document.getElementById('result');
+    res.className = correct ? 'correct' : 'wrong';
+    res.textContent = (correct?'正解！ ':'不正解。 ') + '正解は: ' + labels[state.outcome];
+  });
+});
+
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+</script>
+</body>
+</html>
